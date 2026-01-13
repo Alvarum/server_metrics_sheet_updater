@@ -1,22 +1,41 @@
+"""
+Orquestador: Firestore -> Transform -> Rename columns -> Google Sheets.
+
+Este módulo:
+- Conecta a Firestore (solo lectura).
+- Descarga documentos a memoria.
+- Transforma a dos DataFrames (servers y cameras).
+- Renombra columnas a nombres “humanos” según mappings.
+- Reemplaza el contenido de dos pestañas en Google Sheets.
+
+No escribe ni modifica Firestore bajo ninguna circunstancia.
+"""
+
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, List, Mapping, Tuple
+from typing import Any, List, Mapping, Optional, Tuple
+from dataclasses import replace
 
+from src.column_mappings import default_column_mappings
+from src.column_renamer import ColumnRenamer
 from src.config import load_settings
 from src.firestore_client import FirestoreClient
 from src.logging_utils import configure_logging
 from src.sheets_client import GoogleSheetsClient
-from src.transformer import FirestoreToFramesTransformer
+from src.transformer import FirestoreToFramesTransformer, ExportFrames
+
+
+DocumentItem = Tuple[str, Mapping[str, Any]]
 
 
 def _collect_documents(
     client: FirestoreClient,
     collection_name: str,
-    limit: int | None,
+    limit: Optional[int],
     logger: logging.Logger,
     log_every: int,
-) -> List[Tuple[str, Mapping[str, Any]]]:
+) -> List[DocumentItem]:
     """
     Descarga documentos Firestore a memoria (doc_id, doc_dict).
 
@@ -24,20 +43,21 @@ def _collect_documents(
     :type client: FirestoreClient
     :param collection_name: Colección.
     :type collection_name: str
-    :param limit: Límite docs.
-    :type limit: int | None
+    :param limit: Límite de docs (None = sin límite).
+    :type limit: Optional[int]
     :param logger: Logger.
     :type logger: logging.Logger
-    :param log_every: Cada cuántos loguear.
+    :param log_every: Cada cuántos loguear progreso.
     :type log_every: int
-    :return: Lista de documentos.
-    :rtype: List[Tuple[str, Mapping[str, Any]]]
+    :return: Lista de documentos (doc_id, doc_dict).
+    :rtype: List[DocumentItem]
     """
-    documents: List[Tuple[str, Mapping[str, Any]]] = []
+    documents: List[DocumentItem] = []
     count = 0
 
     for doc in client.iter_documents(collection_name, limit):
         count += 1
+
         doc_dict = doc.to_dict()
         if not doc_dict:
             continue
@@ -52,25 +72,50 @@ def _collect_documents(
     return documents
 
 
+def _apply_column_mappings(frames: ExportFrames) -> ExportFrames:
+    mappings = default_column_mappings()
+
+    servers_renamer = ColumnRenamer(
+        exact_map=mappings.servers_exact,
+        prefix_map=mappings.prefix_map,
+    )
+    cameras_renamer = ColumnRenamer(
+        exact_map=mappings.cameras_exact,
+        prefix_map=mappings.prefix_map,
+    )
+
+    servers_df = servers_renamer.rename(frames.servers)
+    cameras_df = cameras_renamer.rename(frames.cameras)
+
+    return replace(frames, servers=servers_df, cameras=cameras_df)
+
+
+
 def run() -> None:
     """
-    Orquestador, logica principal.
+    Orquestador principal.
+
+    Flujo:
+    1) Carga settings (.env)
+    2) Conecta Firestore (solo lectura)
+    3) Descarga documentos
+    4) Transforma a DataFrames
+    5) Renombra columnas con mappings
+    6) Sube a Google Sheets (reemplazando pestañas)
 
     :return: None
     :rtype: None
     """
+    logger: logging.Logger = configure_logging(logging.INFO)
+
     try:
         settings = load_settings()
         logger = configure_logging(settings.log_level)
 
-        firestore_client = (
-            FirestoreClient(settings.firebase_credentials_path)
-        )
+        firestore_client = FirestoreClient(settings.firebase_credentials_path)
         firestore_client.connect()
 
-        logger.info(
-            "Conectado a Firestore, descargando documentos..."
-        )
+        logger.info("Conectado a Firestore (solo lectura). Descargando docs...")
 
         documents = _collect_documents(
             client=firestore_client,
@@ -83,6 +128,8 @@ def run() -> None:
         transformer = FirestoreToFramesTransformer(settings.chile_tz)
         frames = transformer.transform(documents)
 
+        frames = _apply_column_mappings(frames)
+
         sheets_client = GoogleSheetsClient(
             credentials_path=settings.sheets_credentials_path,
             sheet_id=settings.google_sheet_id,
@@ -90,7 +137,7 @@ def run() -> None:
 
         if frames.servers.empty:
             logger.warning(
-                "df_servers vacío: no se actualiza pestaña servers."
+                "frames.servers vacío: no se actualiza pestaña servers."
             )
         else:
             logger.info(
@@ -109,7 +156,7 @@ def run() -> None:
 
         if frames.cameras.empty:
             logger.warning(
-                "df_cameras vacío: no se actualiza pestaña cameras."
+                "frames.cameras vacío: no se actualiza pestaña cameras."
             )
         else:
             logger.info(
@@ -127,9 +174,14 @@ def run() -> None:
             )
 
         logger.info("Sync completada OK.")
+
     except (FileNotFoundError, ValueError) as exc:
         logger = configure_logging(logging.ERROR)
         logger.error("%s", exc)
     except Exception:
         logger = configure_logging(logging.ERROR)
         logger.exception("Error inesperado.")
+
+
+if __name__ == "__main__":
+    run()
