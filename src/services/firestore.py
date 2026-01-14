@@ -1,6 +1,6 @@
 import firebase_admin
 from firebase_admin import credentials, firestore
-from src2.config import config
+from src.config import config
 
 class FirestoreService:
     def __init__(self):

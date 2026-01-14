@@ -2,7 +2,7 @@ import gspread
 import pandas as pd
 from gspread_dataframe import set_with_dataframe
 from gspread.utils import rowcol_to_a1
-from src2.config import config
+from src.config import config
 
 class SheetsService:
     # --- 1. Definición de Formatos de Datos ---

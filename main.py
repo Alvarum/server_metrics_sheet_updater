@@ -1,8 +1,4 @@
-from __future__ import annotations
-from src.runner import run
-
-def main() -> None:
-    run()
+from src.pipeline import run_pipeline
 
 if __name__ == "__main__":
-    main()
+    run_pipeline()

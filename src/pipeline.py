@@ -1,10 +1,10 @@
 import logging
 from datetime import datetime
 import pytz
-from src2.config import config
-from src2.services.firestore import FirestoreService
-from src2.services.transformer import DataTransformer
-from src2.services.sheets import SheetsService
+from src.config import config
+from src.services.firestore import FirestoreService
+from src.services.transformer import DataTransformer
+from src.services.sheets import SheetsService
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)

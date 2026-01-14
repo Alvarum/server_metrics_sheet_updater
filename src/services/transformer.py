@@ -1,6 +1,6 @@
 import pandas as pd
 from typing import Dict, List
-from src2.config import config
+from src.config import config
 
 class DataTransformer:
     def __init__(self):
