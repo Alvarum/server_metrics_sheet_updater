@@ -1,0 +1,7 @@
+firebase-admin
+google-cloud-firestore
+gspread
+gspread-dataframe
+pandas
+python-dotenv
+pyyaml

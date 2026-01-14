@@ -87,7 +87,11 @@ def _apply_column_mappings(frames: ExportFrames) -> ExportFrames:
     servers_df = servers_renamer.rename(frames.servers)
     cameras_df = cameras_renamer.rename(frames.cameras)
 
-    return replace(frames, servers=servers_df, cameras=cameras_df)
+    return replace(
+        frames,
+        servers=servers_df,
+        cameras=cameras_df
+    )
 
 
 
@@ -95,28 +99,31 @@ def run() -> None:
     """
     Orquestador principal.
 
-    Flujo:
-    1) Carga settings (.env)
-    2) Conecta Firestore (solo lectura)
-    3) Descarga documentos
-    4) Transforma a DataFrames
-    5) Renombra columnas con mappings
-    6) Sube a Google Sheets (reemplazando pestañas)
+    Carga settings (.env)
+    Conecta Firestore (solo lectura)
+    Descarga documentos
+    Transforma a DataFrames
+    Renombra columnas con mappings
+    Sube a Google Sheets (reemplazando pestañas)
 
     :return: None
     :rtype: None
     """
+    # crea el logger y lo transmite a la consola
     logger: logging.Logger = configure_logging(logging.INFO)
 
     try:
+        # Obtiene las configuraciones y variables de entorno
         settings = load_settings()
+        # define que nivel mostrar del log
         logger = configure_logging(settings.log_level)
 
+        # se conecta a la bdd
         firestore_client = FirestoreClient(settings.firebase_credentials_path)
         firestore_client.connect()
 
-        logger.info("Conectado a Firestore (solo lectura). Descargando docs...")
-
+        # Obtiene los documentos de la colección
+        logger.info("Conectado a Firestore, obteniendo docuementos...")
         documents = _collect_documents(
             client=firestore_client,
             collection_name=settings.firestore_collection_name,
@@ -166,6 +173,7 @@ def run() -> None:
             sheets_client.replace_dataframe(
                 worksheet_name=settings.cameras_sheet_name,
                 df=frames.cameras,
+                merge_repeated_in_column="Servidor",
             )
             logger.info(
                 "OK cameras: rows=%s cols=%s",

@@ -140,42 +140,94 @@ def load_settings(env_path: Optional[Path] = None) -> Settings:
     :return: Settings.
     :rtype: Settings
     """
+    # Define un .env opcional: si el caller lo entrega, usamos esa ruta.
+    # Esto permite apuntar explícitamente a un archivo de configuración
     dotenv_path: Optional[Path] = env_path.resolve() if env_path else None
+
+    # Carga variables de entorno desde el .env.
+    # Si dotenv_path existe: pasamos su ruta como string para cargarlo.
+    # Si dotenv_path es None: python-dotenv intentará usar su mecanismo
+    #   estándar (dependiendo de cómo esté configurado; en general puede
+    #   buscar un .env o simplemente no cargar nada).
     load_dotenv(dotenv_path=str(dotenv_path) if dotenv_path else None)
 
+    # Define el "directorio base" desde el cual se resolverán rutas relativas.
+    # La idea es que los paths en el .env puedan ser relativos y aun así
+    # quedar anclados a un lugar coherente.
     if dotenv_path is not None:
+        # Si nos dieron un .env explícito, usamos la carpeta donde vive ese .env
+        # como base_dir, para que rutas relativas del .env sean consistentes.
         base_dir = dotenv_path.parent
     else:
+        # Si no se entregó env_path, definimos base_dir en función del
+        # archivo actual (este módulo), subiendo 2 niveles.
+        # Esto evita depender del working directory (que cambia según ejecución).
         base_dir = Path(__file__).resolve().parents[1]
 
+    # Obtiene la variable obligatoria FIREBASE_CREDENTIALS_PATH desde el entorno.
+    # _require_env debe fallar si la variable no está definida (contrato "required").
+    # Luego _resolve_path convierte ese string en Path absoluto si corresponde:
+    # - Si es relativo: lo ancla en base_dir.
+    # - Si es absoluto: lo deja tal cual.
     firebase_credentials_path = _resolve_path(
         _require_env("FIREBASE_CREDENTIALS_PATH"),
         base_dir=base_dir,
     )
+
+    # Repite la misma lógica para credenciales de Google Sheets:
+    # primero exige la variable, luego normaliza/resuelve el path.
     sheets_credentials_path = _resolve_path(
         _require_env("GOOGLE_SHEETS_CREDENTIALS_PATH"),
         base_dir=base_dir,
     )
 
+    # Lee el nombre de la colección de Firestore desde el entorno.
+    # Se considera obligatorio (si falta, _require_env debe levantar error).
     firestore_collection_name = _require_env("FIRESTORE_COLLECTION_NAME")
+
+    # Lee el ID del Google Sheet desde el entorno (también obligatorio).
     google_sheet_id = _require_env("GOOGLE_SHEET_ID")
 
+    # Lee el nombre de la hoja "servers" desde el entorno.
+    # - Si no existe la variable, usa "servers" como default.
+    # - strip() elimina espacios accidentales al inicio/fin (común en .env).
     servers_sheet_name = os.getenv("SERVERS_SHEET_NAME", "servers").strip()
+
+    # Igual que arriba, pero para la hoja "cameras".
     cameras_sheet_name = os.getenv("CAMERAS_SHEET_NAME", "cameras").strip()
 
+    # Define el timezone a usar para Chile.
+    # Se permite override por .env, pero por defecto se usa America/Santiago.
     chile_tz = os.getenv("CHILE_TZ", "America/Santiago").strip()
 
+    # Lee LOG_LEVEL del entorno (default INFO) y lo normaliza/valida.
+    # _log_level_from_env típicamente convierte strings tipo "info"/"INFO"
+    # a un nivel usable (enum/int) o valida que esté en una lista permitida.
     log_level = _log_level_from_env(os.getenv("LOG_LEVEL", "INFO"))
+
+    # Lee LIMIT del entorno como entero opcional.
+    # _optional_int suele devolver:
+    # - int si existe y es parseable
+    # - None si la variable no está o está vacía
+    # y debería fallar si existe pero no es un número válido (según tu diseño).
     limit = _optional_int("LIMIT")
 
+    # Lee LOG_EVERY como string (default "250") y limpia espacios.
+    # Esto permite que el .env tenga " 250 " y aun así funcione.
     log_every_raw = os.getenv("LOG_EVERY", "250").strip()
     try:
+        # Convierte el valor a int, porque este setting se usa como número
+        # (por ejemplo, "loggear cada N registros").
         log_every = int(log_every_raw)
     except ValueError as exc:
+        # Si no es convertible, levantamos un error claro y con contexto,
+        # incluyendo el valor recibido para facilitar debugging.
         raise ValueError(
             f"LOG_EVERY debe ser int. Valor recibido: {log_every_raw!r}"
         ) from exc
 
+    # Construye y retorna el objeto Settings con todos los campos ya validados
+    # y, en el caso de rutas, ya resueltos a Path coherentes para el programa.
     return Settings(
         firebase_credentials_path=firebase_credentials_path,
         firestore_collection_name=firestore_collection_name,
