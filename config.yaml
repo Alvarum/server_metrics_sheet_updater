@@ -8,6 +8,7 @@ sheets:
     tab_name: "servidores"
     history_tab: "historial_servidores"
     title: "Monitor de Servidores Raptor"
+    merge_column: "Server Name"
     columns:
       # Identificación
       "Server Name": 
@@ -29,7 +30,7 @@ sheets:
         format: "TEXT"
       "bank_ip": 
         name: "IP Banco"
-        format: "TEXT"  # Importante: TEXTO para que no se rompa el formato IP
+        format: "TEXT"
       "bank_num": 
         name: "Número Banco"
         format: "NUMBER"
@@ -37,7 +38,7 @@ sheets:
         name: "UTC Banco"
         format: "NUMBER"
 
-      # Métricas de Hardware (Aquí arreglamos el problema del Disco)
+      # Métricas de Hardware
       "server_stats_disk_usage_pct": 
         name: "Uso Disco (%)"
         format: "NUMBER"
@@ -83,7 +84,7 @@ sheets:
     tab_name: "camaras"
     history_tab: "historial_camaras"
     title: "Monitor de Cámaras"
-    merge_column: "Server Name" # Columna que se usará para agrupar visualmente
+    merge_column: "Server Name"
     columns:
       "Server Name":
         name: "Servidor"
@@ -93,7 +94,7 @@ sheets:
         format: "TEXT"
       "camera_ip":
         name: "IP Cámara"
-        format: "TEXT" # TEXTO para evitar errores de formato
+        format: "TEXT"
       
       # Estado
       "status_all_images":
