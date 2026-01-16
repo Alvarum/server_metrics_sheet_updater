@@ -8,111 +8,132 @@ sheets:
     tab_name: "servidores"
     history_tab: "historial_servidores"
     title: "Monitor de Servidores Raptor"
-    merge_column: "Server Name"
+    # merge_column ELIMINADO para evitar agrupación
     columns:
-      # Identificación
+      # 1. Servidor
       "Server Name": 
         name: "Servidor"
         format: "TEXT"
-      "server_stats_status_server": 
-        name: "Estado Servidor"
+
+      # 2. IP Banco
+      "bank_ip": 
+        name: "IP Banco"
         format: "TEXT"
-        # Si es diferente de "online" debería ponerse rojo en la planilla
-        threshold:
-          operator: "!="
-          value: "ok"
+
+      # 3. Cámaras activas
+      "active_cameras_count":
+        name: "Cámaras activas"
+        format: "INTEGER"
+
+      # 4. Sistema Operativo
       "operating_system": 
         name: "Sistema Operativo"
         format: "TEXT"
+
+      # 5. Versión Raptor
       "raptor_version": 
         name: "Versión Raptor"
         format: "TEXT"
 
-      # Información Bancaria
-      "bank_id": 
-        name: "Banco"
+      # 6. Estado Servidor
+      "server_stats_status_server": 
+        name: "Estado Servidor"
         format: "TEXT"
-      "bank_ip": 
-        name: "IP Banco"
-        format: "TEXT"
-      "bank_num": 
-        name: "Número Banco"
-        format: "INTEGER"
-      "bank_utc": 
-        name: "UTC Banco"
-        format: "INTEGER"
+        threshold:
+          operator: "!="
+          value: "ok"
 
-      # Métricas de Hardware
+      # 7. Uso Disco (%)
       "server_stats_disk_usage_pct": 
         name: "Uso Disco (%)"
         format: "NUMBER"
-        # EJEMPLO: Alerta si el disco supera el 90%
         threshold:
           operator: ">"
-          value: 90
+          value: 85
+
+      # 8. Uso CPU (%)
       "server_stats_cpu_usage_pct": 
         name: "Uso CPU (%)"
         format: "NUMBER"
-        # EJEMPLO: Alerta si CPU supera 95%
-        threshold:
-          operator: ">"
-          value: 95
-      "server_stats_ram_usage_pct": 
-        name: "Uso RAM (%)"
-        format: "NUMBER"
-      "server_stats_cpu_temperature_celsius": 
-        name: "Temperatura CPU (°C)"
-        format: "NUMBER"
-        # EJEMPLO: Alerta si Temp supera 80°C
         threshold:
           operator: ">"
           value: 80
-      
-      # Red
+
+      # 9. Uso RAM (%)
+      "server_stats_ram_usage_pct": 
+        name: "Uso RAM (%)"
+        format: "NUMBER"
+        threshold:
+          operator: ">"
+          value: 80
+
+      # 10. Temperatura CPU
+      "server_stats_cpu_temperature_celsius": 
+        name: "Temperatura CPU (°C)"
+        format: "NUMBER"
+        threshold:
+          operator: ">"
+          value: 80
+
+      # 11. Boot Sistema
+      "server_stats_timestamp_boot": 
+        name: "Boot Sistema (Chile)"
+        format: "DATE_TIME"
+
+      # 12. Uptime
+      "server_stats_uptime_days": 
+        name: "Uptime (días)"
+        format: "INTEGER"
+        threshold:
+          operator: ">"
+          value: 15
+
+      # 13. RX
       "server_stats_network_speed_recieve_kbps": 
         name: "RX (kbps)"
         format: "NUMBER"
+
+      # 14. TX
       "server_stats_network_speed_send_kbps": 
         name: "TX (kbps)"
         format: "NUMBER"
 
-      # Tiempos y Procesos
+      # 15. Fecha consulta (Nueva columna inyectada)
+      "query_timestamp": 
+        name: "Fecha consulta"
+        format: "DATE_TIME"
+
+      # 16. Duración Proceso
       "process_duration_sec": 
         name: "Duración Proceso (s)"
         format: "INTEGER"
-      "server_stats_uptime_days": 
-        name: "Uptime (días)"
-        format: "INTEGER"
-      "server_stats_timestamp_boot": 
-        name: "Boot Sistema (Chile)"
-        format: "DATE_TIME"
-      "Timestamp Query": 
-        name: "Timestamp Consulta (Chile)"
-        format: "DATE_TIME"
-      
-      # Cámaras en el servidor
-      "active_cameras_count":
-        name: "Cámaras activas"
-        format: "INTEGER"
+        threshold:
+          operator: ">"
+          value: 120
 
   # region Hoja Cámaras
   cameras:
     tab_name: "camaras"
     history_tab: "historial_camaras"
     title: "Monitor de Cámaras"
-    merge_column: "Server Name"
+    # merge_column ELIMINADO para evitar agrupación
     columns:
+      # 1. Servidor
       "Server Name":
         name: "Servidor"
         format: "TEXT"
+
+      # 2. Cámara
       "camera_name":
         name: "Cámara"
         format: "TEXT"
+
+      # 3. IP Cámara
       "camera_ip":
         name: "IP Cámara"
         format: "TEXT"
       
-      # Estado
+      # 4. Estado imágenes
       "status_all_images":
         name: "Estado imágenes"
         format: "TEXT"
@@ -120,21 +141,28 @@ sheets:
           operator: "!="
           value: "success"
       
-      # Tiempos
+      # 5. Edad última imagen
       "last_image_age_min":
         name: "Edad última imagen (min)"
         format: "NUMBER"
         threshold:
           operator: ">"
-          value: 20
+          value: 30
+
+      # 6. Duración rotación
       "rotation_duration_min":
         name: "Duración rotación (min)"
         format: "NUMBER"
+        threshold:
+          operator: ">"
+          value: 10
       
-      # Fechas
-      "timestamp_last_image":
-        name: "Epoch última imagen"
-        format: "INTEGER"
+      # 7. Última imagen (Chile)
       "timestamp_last_image_dt":
         name: "Última imagen (Chile)"
+        format: "DATE_TIME"
+      
+      # 8. Fecha - hora consulta (Nueva columna inyectada)
+      "query_timestamp":
+        name: "Fecha - hora consulta"
         format: "DATE_TIME"
