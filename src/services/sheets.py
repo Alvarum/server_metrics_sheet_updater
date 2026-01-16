@@ -105,7 +105,6 @@ class SheetsService:
         }
     }
 
-    # Mapeo de operadores YAML a constantes de la API de Google Sheets
     # NOTA: "!=" se maneja manualmente como CUSTOM_FORMULA
     CONDITION_MAP: Dict[str, str] = {
         ">": "NUMBER_GREATER",
@@ -136,37 +135,30 @@ class SheetsService:
         Actualiza la hoja principal (snapshot) con los datos actuales.
 
         Realiza las siguientes acciones:
-        1. Limpieza profunda (Datos, Merges y Reglas Condicionales).
-        2. Sanitiza los datos (quita espacios).
-        3. Escribe cabeceras y datos.
-        4. Aplica formatos.
+        Limpieza profunda (Datos, Merges y Reglas Condicionales).
+        Sanitiza los datos (quita espacios).
+        Escribe cabeceras y datos.
+        Aplica formatos.
         """
         if df.empty:
             return
 
-        # --- 0. SANITIZACIÓN DE DATOS ---
-        # Quitamos espacios al principio y final de todos los textos.
         df = df.apply(lambda x: x.str.strip() if x.dtype == "object" else x)
 
         tab_name: str = tab_config["tab_name"]
         ws: gspread.Worksheet = self._get_or_create_worksheet(tab_name)
 
-        # --- 1. LIMPIEZA PROFUNDA ---
-        # Borramos datos, unimos celdas y ELIMINAMOS REGLAS CONDICIONALES viejas
         self._clean_sheet_metadata(ws)
 
-        # --- 2. CABECERA (Metadata) ---
         ws.update("A1", [["Título"], ["Última actualización (Chile)"], ["Tiempo transcurrido:"]])
         ws.update("B1", [[tab_config.get("title", "Reporte")], [str(time_chile)]])
         ws.update_acell("B3", '=NOW()-B2')
 
-        # Estilos de Cabecera
         ws.format("A1:A3", self.STYLES["HEADER_BLUE"])
         ws.format("B1:B3", self.STYLES["METADATA_VALUE"])
         ws.format("B2", self.FORMATS["DATE_TIME"])
         ws.format("B3", self.FORMATS["DURATION"])
 
-        # --- 3. ESCRITURA DE DATOS ---
         start_row: int = 6
         set_with_dataframe(
             ws,
@@ -175,7 +167,6 @@ class SheetsService:
             resize=True
         )
 
-        # --- 4. FORMATOS Y ESTILOS ---
         self._apply_data_formats(ws, df, tab_config["columns"], start_row)
         self._apply_visual_styles(ws, df, tab_config, start_row)
         self._apply_conditional_rules(ws, df, tab_config["columns"], start_row)
@@ -240,16 +231,12 @@ class SheetsService:
         2. Deshace todas las celdas fusionadas (Unmerge).
         3. ELIMINA todas las reglas de formato condicional existentes.
         """
-        # 1. Borrar datos visuales y texto
         ws.clear()
 
-        # 2. Deshacer merges (Previene error de overlap)
         try:
             ws.unmerge_cells(f"A1:Z{ws.row_count}")
         except Exception:
             pass
-
-        # 3. Eliminar Formatos Condicionales Acumulados
         try:
             meta = self.sh.fetch_sheet_metadata({'includeGridData': False})
             sheet_meta = next(

@@ -116,7 +116,6 @@ sheets:
       "status_all_images":
         name: "Estado imágenes"
         format: "TEXT"
-        # EJEMPLO: Si no dice "OK", alerta roja
         threshold:
           operator: "!="
           value: "success"
@@ -125,7 +124,6 @@ sheets:
       "last_image_age_min":
         name: "Edad última imagen (min)"
         format: "NUMBER"
-        # EJEMPLO: Si la imagen es más vieja de 20 min, alerta
         threshold:
           operator: ">"
           value: 20
