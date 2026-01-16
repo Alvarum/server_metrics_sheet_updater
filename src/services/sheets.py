@@ -1,34 +1,75 @@
+"""
+Servicio encargado de la interacción con la API de Google Sheets.
+
+Este módulo maneja la escritura de datos, aplicación de formatos,
+estilos visuales y reglas de formato condicional (umbrales).
+"""
+
+from typing import Dict, List, Any, Optional
 import gspread
 import pandas as pd
 from gspread_dataframe import set_with_dataframe
-from gspread.utils import rowcol_to_a1
+from gspread.utils import rowcol_to_a1, a1_range_to_grid_range
 from src.config import config
 
+
 class SheetsService:
-    # Formatos de Datos
-    FORMATS = {
-        "NUMBER": {"numberFormat": {"type": "NUMBER", "pattern": "0.0"}},
-        "PERCENT": {"numberFormat": {"type": "PERCENT", "pattern": "0.0%"}},
-        "DATE_TIME": {"numberFormat": {"type": "DATE_TIME", "pattern": "yyyy-mm-dd hh:mm:ss"}},
-        "TEXT": {"numberFormat": {"type": "TEXT"}},
+    """
+    Clase para gestionar la conexión y manipulación de hojas de cálculo
+    de Google Sheets.
+    """
+
+    # Definición de formatos de número para la API de Sheets
+    FORMATS: Dict[str, Dict[str, Any]] = {
+        # Para valores con decimales (ej: 45.2)
+        "NUMBER": {
+            "numberFormat": {"type": "NUMBER", "pattern": "0.0"}
+        },
+        # NUEVO: Para valores enteros sin decimales (ej: 5, 1768585498)
+        "INTEGER": {
+            "numberFormat": {"type": "NUMBER", "pattern": "0"}
+        },
+        "PERCENT": {
+            "numberFormat": {"type": "PERCENT", "pattern": "0.0%"}
+        },
+        "DATE_TIME": {
+            "numberFormat": {
+                "type": "DATE_TIME",
+                "pattern": "yyyy-mm-dd hh:mm:ss"
+            }
+        },
+        "TEXT": {
+            "numberFormat": {"type": "TEXT"}
+        },
+        # Formato de Duración para el contador (ej: 0:05:30)
+        "DURATION": {
+            "numberFormat": {"type": "TIME", "pattern": "[h]:mm:ss"}
+        }
     }
 
-    # Estilos Visuales
-    STYLES = {
-        # Azul de Google: Fondo Azul, Letra Blanca
+    # Definición de estilos visuales (colores, fuentes, bordes)
+    STYLES: Dict[str, Dict[str, Any]] = {
+        # Azul de Google: Fondo Azul, Letra Blanca, Centrado (Para Títulos A1:A3)
         "HEADER_BLUE": {
             "backgroundColor": {"red": 0.258, "green": 0.52, "blue": 0.956},
-            "textFormat": {"foregroundColor": {"red": 1, "green": 1, "blue": 1}, "bold": True, "fontSize": 10},
+            "textFormat": {
+                "foregroundColor": {"red": 1, "green": 1, "blue": 1},
+                "bold": True,
+                "fontSize": 10
+            },
             "horizontalAlignment": "CENTER"
         },
-        # Amarillo: Fondo Amarillo, Letra Negra
+        # Amarillo: Fondo Amarillo, Letra Negra, Centrado Vert/Horiz
         "COLUMN_YELLOW": {
             "backgroundColor": {"red": 0.98, "green": 0.73, "blue": 0.01},
-            "textFormat": {"foregroundColor": {"red": 0, "green": 0, "blue": 0}, "bold": True},
+            "textFormat": {
+                "foregroundColor": {"red": 0, "green": 0, "blue": 0},
+                "bold": True
+            },
             "verticalAlignment": "MIDDLE",
             "horizontalAlignment": "CENTER"
         },
-        # BASE: Bordes negros y letra negra
+        # BASE: Bordes negros sólidos, texto negro
         "TABLE_BASE": {
             "borders": {
                 "top": {"style": "SOLID"},
@@ -36,39 +77,97 @@ class SheetsService:
                 "left": {"style": "SOLID"},
                 "right": {"style": "SOLID"}
             },
-            "textFormat": {"foregroundColor": {"red": 0, "green": 0, "blue": 0}} # <--- ESTO ES LA CLAVE
+            "textFormat": {
+                "foregroundColor": {"red": 0, "green": 0, "blue": 0}
+            }
+        },
+        # METADATA_VALUE: Fondo BLANCO explícito (para corregir el azul residual)
+        "METADATA_VALUE": {
+            "backgroundColor": {"red": 1, "green": 1, "blue": 1},  # Blanco
+            "borders": {
+                "top": {"style": "SOLID"},
+                "bottom": {"style": "SOLID"},
+                "left": {"style": "SOLID"},
+                "right": {"style": "SOLID"}
+            },
+            "textFormat": {
+                "foregroundColor": {"red": 0, "green": 0, "blue": 0}
+            },
+            "horizontalAlignment": "CENTER"
+        },
+        # ALERTA: Fondo Rojo claro, Letra Rojo oscuro (para thresholds)
+        "ALERT_RED": {
+            "backgroundColor": {"red": 1.0, "green": 0.8, "blue": 0.8},
+            "textFormat": {
+                "foregroundColor": {"red": 0.8, "green": 0.0, "blue": 0.0},
+                "bold": True
+            }
         }
     }
 
+    # Mapeo de operadores YAML a constantes de la API de Google Sheets
+    # NOTA: "!=" se maneja manualmente como CUSTOM_FORMULA
+    CONDITION_MAP: Dict[str, str] = {
+        ">": "NUMBER_GREATER",
+        ">=": "NUMBER_GREATER_THAN_EQ",
+        "<": "NUMBER_LESS",
+        "<=": "NUMBER_LESS_THAN_EQ",
+        "==": "TEXT_EQ",       # Funciona para comparaciones exactas
+        "between": "NUMBER_BETWEEN",        # Rango inclusivo
+        "not_between": "NUMBER_NOT_BETWEEN"  # Fuera de rango
+    }
+
     def __init__(self) -> None:
+        """
+        Inicializa el cliente de gspread utilizando las credenciales
+        definidas en la configuración.
+        """
         gc = gspread.service_account(filename=config.creds_sheets)
         self.sh = gc.open_by_key(config.sheet_id)
 
     def update_snapshot(
         self,
-        tab_config: dict,
+        tab_config: Dict[str, Any],
         df: pd.DataFrame,
-        time_chile,
-        time_utc
+        time_chile: str,
+        time_utc: str
     ) -> None:
-        if df.empty: return
-        
-        tab_name = tab_config["tab_name"]
-        ws = self._get_or_create_worksheet(tab_name)
-        ws.clear()
+        """
+        Actualiza la hoja principal (snapshot) con los datos actuales.
 
-        # Metadatos (Filas 1-3)
-        header_data = [
-            ["Título", tab_config.get("title", "Reporte")],
-            ["Última actualización (Chile)", str(time_chile)],
-            ["Última actualización (UTC)", str(time_utc)]
-        ]
-        ws.update("A1:B3", header_data)
+        Realiza las siguientes acciones:
+        1. Limpieza profunda (Datos, Merges y Reglas Condicionales).
+        2. Sanitiza los datos (quita espacios).
+        3. Escribe cabeceras y datos.
+        4. Aplica formatos.
+        """
+        if df.empty:
+            return
+
+        # --- 0. SANITIZACIÓN DE DATOS ---
+        # Quitamos espacios al principio y final de todos los textos.
+        df = df.apply(lambda x: x.str.strip() if x.dtype == "object" else x)
+
+        tab_name: str = tab_config["tab_name"]
+        ws: gspread.Worksheet = self._get_or_create_worksheet(tab_name)
+
+        # --- 1. LIMPIEZA PROFUNDA ---
+        # Borramos datos, unimos celdas y ELIMINAMOS REGLAS CONDICIONALES viejas
+        self._clean_sheet_metadata(ws)
+
+        # --- 2. CABECERA (Metadata) ---
+        ws.update("A1", [["Título"], ["Última actualización (Chile)"], ["Tiempo transcurrido:"]])
+        ws.update("B1", [[tab_config.get("title", "Reporte")], [str(time_chile)]])
+        ws.update_acell("B3", '=NOW()-B2')
+
+        # Estilos de Cabecera
         ws.format("A1:A3", self.STYLES["HEADER_BLUE"])
-        ws.format("B1:B3", self.STYLES["TABLE_BASE"])
+        ws.format("B1:B3", self.STYLES["METADATA_VALUE"])
+        ws.format("B2", self.FORMATS["DATE_TIME"])
+        ws.format("B3", self.FORMATS["DURATION"])
 
-        # Datos (Fila 6)
-        start_row = 6
+        # --- 3. ESCRITURA DE DATOS ---
+        start_row: int = 6
         set_with_dataframe(
             ws,
             df,
@@ -76,23 +175,11 @@ class SheetsService:
             resize=True
         )
 
-        # Formatos de Datos
-        self._apply_data_formats(
-            ws,
-            df,
-            tab_config["columns"],
-            start_row
-        )
+        # --- 4. FORMATOS Y ESTILOS ---
+        self._apply_data_formats(ws, df, tab_config["columns"], start_row)
+        self._apply_visual_styles(ws, df, tab_config, start_row)
+        self._apply_conditional_rules(ws, df, tab_config["columns"], start_row)
 
-        # Estilos Visuales
-        self._apply_visual_styles(
-            ws,
-            df,
-            tab_config,
-            start_row
-        )
-
-        # Merge
         if "merge_column" in tab_config:
             self._merge_cells(
                 ws,
@@ -100,132 +187,157 @@ class SheetsService:
                 tab_config["columns"][tab_config["merge_column"]]["name"],
                 start_row
             )
-    def append_history(self, tab_config: dict, df: pd.DataFrame, time_chile):
-            """Agrega filas al final de la hoja de historial."""
-            if df.empty: return
-            
-            hist_tab_name = tab_config.get("history_tab")
-            if not hist_tab_name: return
 
-            # Preparar DataFrame para Historial
-            df_history = df.copy()
-            # Insertamos la fecha al inicio
-            df_history.insert(0, "Fecha Extracción", time_chile)
+    def append_history(
+        self,
+        tab_config: Dict[str, Any],
+        df: pd.DataFrame,
+        time_chile: str
+    ) -> None:
+        """Agrega los datos actuales al final de la hoja de historial."""
+        if df.empty:
+            return
 
-            ws = self._get_or_create_worksheet(hist_tab_name)
-            
-            # Verificar si necesitamos escribir cabeceras
-            # Chequeamos SOLO la celda A1. Si está vacía, asumimos que es hoja nueva.
-            # Esto es más rápido y seguro que leer toda la hoja.
-            check_header = ws.get_values("A1") 
-            needs_header = not check_header or not check_header[0]
+        hist_tab_name: Optional[str] = tab_config.get("history_tab")
+        if not hist_tab_name:
+            return
 
-            if needs_header:
-                # CASO A: No hay cabecera -> Escribimos CON TÍTULOS
-                set_with_dataframe(
-                    ws, 
-                    df_history, 
-                    row=1, 
-                    include_column_header=True, 
-                    resize=True
-                )
-                # Y le ponemos el estilo Azul al encabezado (Fila 1)
-                ws.format("1:1", self.STYLES["HEADER_BLUE"])
-            else:
-                # CASO B: Ya tiene cabecera -> Agregamos filas al final (SIN TÍTULOS)
-                payload = df_history.astype(str).values.tolist()
-                ws.append_rows(payload)
+        df_history = df.copy()
+        df_history.insert(0, "Fecha Extracción", time_chile)
 
-    # def append_history(
-    #     self,
-    #     tab_config: dict,
-    #     df: pd.DataFrame,
-    #     time_chile
-    # ) -> None:
-    #     if df.empty: return
-    #     hist_tab_name = tab_config.get("history_tab")
-    #     if not hist_tab_name: return
+        ws: gspread.Worksheet = self._get_or_create_worksheet(hist_tab_name)
 
-    #     df_history = df.copy()
-    #     df_history.insert(0, "Fecha Extracción", time_chile)
+        check_header = ws.get_values("A1")
+        needs_header = not check_header or not check_header[0]
 
-    #     ws = self._get_or_create_worksheet(hist_tab_name)
-        
-    #     if len(ws.get_all_values()) == 0:
-    #         set_with_dataframe(ws, df_history, row=1)
-    #     else:
-    #         payload = df_history.astype(str).values.tolist()
-    #         ws.append_rows(payload)
+        if needs_header:
+            set_with_dataframe(
+                ws,
+                df_history,
+                row=1,
+                include_column_header=True,
+                resize=True
+            )
+            ws.format("1:1", self.STYLES["HEADER_BLUE"])
+        else:
+            payload = df_history.astype(str).values.tolist()
+            ws.append_rows(payload)
 
-    def _get_or_create_worksheet(self, name):
-        try: return self.sh.worksheet(name)
-        except: return self.sh.add_worksheet(
-            name,
-            rows=100,
-            cols=20
-        )
+    def _get_or_create_worksheet(self, name: str) -> gspread.Worksheet:
+        try:
+            return self.sh.worksheet(name)
+        except gspread.WorksheetNotFound:
+            return self.sh.add_worksheet(
+                title=name,
+                rows=100,
+                cols=20
+            )
+
+    def _clean_sheet_metadata(self, ws: gspread.Worksheet) -> None:
+        """
+        Realiza una limpieza total de la hoja:
+        1. Borra contenido y formato de celdas.
+        2. Deshace todas las celdas fusionadas (Unmerge).
+        3. ELIMINA todas las reglas de formato condicional existentes.
+        """
+        # 1. Borrar datos visuales y texto
+        ws.clear()
+
+        # 2. Deshacer merges (Previene error de overlap)
+        try:
+            ws.unmerge_cells(f"A1:Z{ws.row_count}")
+        except Exception:
+            pass
+
+        # 3. Eliminar Formatos Condicionales Acumulados
+        try:
+            meta = self.sh.fetch_sheet_metadata({'includeGridData': False})
+            sheet_meta = next(
+                (s for s in meta['sheets'] if s['properties']['sheetId'] == ws.id),
+                None
+            )
+
+            if sheet_meta and 'conditionalFormats' in sheet_meta:
+                rules_count = len(sheet_meta['conditionalFormats'])
+                requests = []
+                for _ in range(rules_count):
+                    requests.append({
+                        "deleteConditionalFormatRule": {
+                            "sheetId": ws.id,
+                            "index": 0
+                        }
+                    })
+                
+                if requests:
+                    self.sh.batch_update({'requests': requests})
+
+        except Exception as e:
+            print(f"Advertencia: No se pudieron limpiar reglas antiguas: {e}")
 
     def _apply_data_formats(
         self,
-        ws,
-        df,
-        columns_config,
-        start_row_idx
+        ws: gspread.Worksheet,
+        df: pd.DataFrame,
+        columns_config: Dict[str, Any],
+        start_row_idx: int
     ) -> None:
-        batch = []
+        batch: List[Dict[str, Any]] = []
         final_name_map = {v["name"]: v for k, v in columns_config.items()}
 
         for i, col_name in enumerate(df.columns):
             if col_name in final_name_map:
                 fmt_type = final_name_map[col_name].get("format", "TEXT")
                 rule = self.FORMATS.get(fmt_type)
+
                 if rule:
                     col_letter = rowcol_to_a1(1, i + 1).replace("1", "")
                     data_start = start_row_idx + 1
                     batch.append({
-                        "range": f"{col_letter}{data_start}:{col_letter}{data_start + len(df)}",
+                        "range": (
+                            f"{col_letter}{data_start}:"
+                            f"{col_letter}{data_start + len(df)}"
+                        ),
                         "format": rule
                     })
-        if batch: ws.batch_format(batch)
+        if batch:
+            ws.batch_format(batch)
 
     def _apply_visual_styles(
         self,
-        ws,
-        df,
-        tab_config,
-        start_row_idx
+        ws: gspread.Worksheet,
+        df: pd.DataFrame,
+        tab_config: Dict[str, Any],
+        start_row_idx: int
     ) -> None:
-        batch_styles = []
-        
+        batch_styles: List[Dict[str, Any]] = []
         last_col_idx = len(df.columns)
         last_row_idx = start_row_idx + len(df)
         last_col_letter = rowcol_to_a1(1, last_col_idx).replace("1", "")
-        
-        # A todo el rango le pone bordes y letra negra
+
+        # Estilos base
         full_table_range = f"A{start_row_idx}:{last_col_letter}{last_row_idx}"
         batch_styles.append({
             "range": full_table_range,
             "format": self.STYLES["TABLE_BASE"]
         })
 
-        # A la primera fila le pone azul y letra blanca
         header_range = f"A{start_row_idx}:{last_col_letter}{start_row_idx}"
         batch_styles.append({
             "range": header_range,
             "format": self.STYLES["HEADER_BLUE"]
         })
 
-        # Columna amarilla (la del merge)
         if "merge_column" in tab_config:
-            target_col_name = tab_config["columns"][tab_config["merge_column"]]["name"]
-            
+            target_config = tab_config["columns"][tab_config["merge_column"]]
+            target_col_name = target_config["name"]
+
             if target_col_name in df.columns:
                 col_idx = df.columns.get_loc(target_col_name) + 1
-                col_letter = rowcol_to_a1(1, col_idx).replace("1", "")
-                
-                # Desde debajo del header hasta el final
-                side_range = f"{col_letter}{start_row_idx + 1}:{col_letter}{last_row_idx}"
-                
+                col_let = rowcol_to_a1(1, col_idx).replace("1", "")
+                side_range = (
+                    f"{col_let}{start_row_idx + 1}:"
+                    f"{col_let}{last_row_idx}"
+                )
                 batch_styles.append({
                     "range": side_range,
                     "format": self.STYLES["COLUMN_YELLOW"]
@@ -234,12 +346,94 @@ class SheetsService:
         if batch_styles:
             ws.batch_format(batch_styles)
 
-    def _merge_cells(self, ws, df, col_name, start_row_idx):
-        if col_name not in df.columns: return
+    def _apply_conditional_rules(
+        self,
+        ws: gspread.Worksheet,
+        df: pd.DataFrame,
+        columns_config: Dict[str, Any],
+        start_row_idx: int
+    ) -> None:
+        rules: List[Dict[str, Any]] = []
+        display_to_config = {v["name"]: v for k, v in columns_config.items()}
+
+        row_start = start_row_idx + 1
+        row_end = start_row_idx + len(df)
+
+        for i, col_name in enumerate(df.columns):
+            conf = display_to_config.get(col_name)
+
+            if conf and "threshold" in conf:
+                threshold: Dict[str, Any] = conf["threshold"]
+                operator: str = threshold.get("operator", "")
+                
+                col_letter = rowcol_to_a1(1, i + 1).replace("1", "")
+                range_a1 = f"{col_letter}{row_start}:{col_letter}{row_end}"
+                grid_range = a1_range_to_grid_range(range_a1, ws.id)
+
+                condition_type: Optional[str] = None
+                condition_values: List[Dict[str, str]] = []
+
+                if operator == "!=":
+                    val = threshold.get("value")
+                    fmt = conf.get("format", "TEXT")
+                    
+                    val_str = f'"{val}"' if fmt == "TEXT" else str(val)
+                    formula = f'=TRIM({col_letter}{row_start})<>{val_str}'
+                    
+                    condition_type = "CUSTOM_FORMULA"
+                    condition_values = [{"userEnteredValue": formula}]
+                else:
+                    gs_type = self.CONDITION_MAP.get(operator)
+                    if gs_type:
+                        condition_type = gs_type
+                        if operator in ["between", "not_between"]:
+                            val_min = threshold.get("min", 0)
+                            val_max = threshold.get("max", 0)
+                            condition_values = [
+                                {"userEnteredValue": str(val_min)},
+                                {"userEnteredValue": str(val_max)}
+                            ]
+                        else:
+                            val_single = threshold.get("value")
+                            condition_values = [
+                                {"userEnteredValue": str(val_single)}
+                            ]
+
+                if condition_type:
+                    rule = {
+                        "ranges": [grid_range],
+                        "booleanRule": {
+                            "condition": {
+                                "type": condition_type,
+                                "values": condition_values
+                            },
+                            "format": self.STYLES["ALERT_RED"]
+                        }
+                    }
+                    rules.append({
+                        "addConditionalFormatRule": {
+                            "rule": rule,
+                            "index": 0
+                        }
+                    })
+
+        if rules:
+            self.sh.batch_update({"requests": rules})
+
+    def _merge_cells(
+        self,
+        ws: gspread.Worksheet,
+        df: pd.DataFrame,
+        col_name: str,
+        start_row_idx: int
+    ) -> None:
+        if col_name not in df.columns:
+            return
+
         col_idx = df.columns.get_loc(col_name) + 1
         values = df[col_name].tolist()
         data_offset = start_row_idx + 1
-        
+
         start = 0
         for i in range(1, len(values)):
             if values[i] != values[start]:
@@ -248,7 +442,8 @@ class SheetsService:
                     end_cell = rowcol_to_a1(i + data_offset - 1, col_idx)
                     ws.merge_cells(f"{start_cell}:{end_cell}")
                 start = i
+
         if len(values) - start > 1:
-             start_cell = rowcol_to_a1(start + data_offset, col_idx)
-             end_cell = rowcol_to_a1(len(values) + data_offset - 1, col_idx)
-             ws.merge_cells(f"{start_cell}:{end_cell}")
+            start_cell = rowcol_to_a1(start + data_offset, col_idx)
+            end_cell = rowcol_to_a1(len(values) + data_offset - 1, col_idx)
+            ws.merge_cells(f"{start_cell}:{end_cell}")

@@ -17,6 +17,10 @@ sheets:
       "server_stats_status_server": 
         name: "Estado Servidor"
         format: "TEXT"
+        # Si es diferente de "online" debería ponerse rojo en la planilla
+        threshold:
+          operator: "!="
+          value: "ok"
       "operating_system": 
         name: "Sistema Operativo"
         format: "TEXT"
@@ -33,24 +37,36 @@ sheets:
         format: "TEXT"
       "bank_num": 
         name: "Número Banco"
-        format: "NUMBER"
+        format: "INTEGER"
       "bank_utc": 
         name: "UTC Banco"
-        format: "NUMBER"
+        format: "INTEGER"
 
       # Métricas de Hardware
       "server_stats_disk_usage_pct": 
         name: "Uso Disco (%)"
         format: "NUMBER"
+        # EJEMPLO: Alerta si el disco supera el 90%
+        threshold:
+          operator: ">"
+          value: 90
       "server_stats_cpu_usage_pct": 
         name: "Uso CPU (%)"
         format: "NUMBER"
+        # EJEMPLO: Alerta si CPU supera 95%
+        threshold:
+          operator: ">"
+          value: 95
       "server_stats_ram_usage_pct": 
         name: "Uso RAM (%)"
         format: "NUMBER"
       "server_stats_cpu_temperature_celsius": 
         name: "Temperatura CPU (°C)"
         format: "NUMBER"
+        # EJEMPLO: Alerta si Temp supera 80°C
+        threshold:
+          operator: ">"
+          value: 80
       
       # Red
       "server_stats_network_speed_recieve_kbps": 
@@ -63,10 +79,10 @@ sheets:
       # Tiempos y Procesos
       "process_duration_sec": 
         name: "Duración Proceso (s)"
-        format: "NUMBER"
+        format: "INTEGER"
       "server_stats_uptime_days": 
         name: "Uptime (días)"
-        format: "NUMBER"
+        format: "INTEGER"
       "server_stats_timestamp_boot": 
         name: "Boot Sistema (Chile)"
         format: "DATE_TIME"
@@ -77,7 +93,7 @@ sheets:
       # Cámaras en el servidor
       "active_cameras_count":
         name: "Cámaras activas"
-        format: "NUMBER"
+        format: "INTEGER"
 
   # region Hoja Cámaras
   cameras:
@@ -100,11 +116,19 @@ sheets:
       "status_all_images":
         name: "Estado imágenes"
         format: "TEXT"
+        # EJEMPLO: Si no dice "OK", alerta roja
+        threshold:
+          operator: "!="
+          value: "success"
       
       # Tiempos
       "last_image_age_min":
         name: "Edad última imagen (min)"
         format: "NUMBER"
+        # EJEMPLO: Si la imagen es más vieja de 20 min, alerta
+        threshold:
+          operator: ">"
+          value: 20
       "rotation_duration_min":
         name: "Duración rotación (min)"
         format: "NUMBER"
@@ -112,7 +136,7 @@ sheets:
       # Fechas
       "timestamp_last_image":
         name: "Epoch última imagen"
-        format: "NUMBER"
+        format: "INTEGER"
       "timestamp_last_image_dt":
         name: "Última imagen (Chile)"
         format: "DATE_TIME"
