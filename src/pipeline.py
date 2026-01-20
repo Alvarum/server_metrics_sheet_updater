@@ -20,6 +20,7 @@ def run_pipeline() -> None:
     1. Extracción: Obtiene datos de Firestore.
     2. Transformación: Normaliza fechas y estructura datos.
     3. Carga: Escribe en Snapshot e Historial de Google Sheets.
+    4. Visualización: Genera/Actualiza el Dashboard.
     """
     logger.info(">>> Iniciando Pipeline ETL")
 
@@ -44,7 +45,6 @@ def run_pipeline() -> None:
         # --- Transformación ---
         logger.info("Transformando datos...")
         transformer = DataTransformer()
-        # Se procesa la data sin argumentos extra (toma timestamp interno)
         datasets = transformer.process_data(raw_docs)
 
         # --- Carga ---
@@ -78,6 +78,10 @@ def run_pipeline() -> None:
             datasets["cameras"],
             str_chile
         )
+
+        # --- Visualización (EL PASO QUE FALTABA) ---
+        logger.info("Generando Dashboard Operativo...")
+        sheets.setup_dashboard()
 
         logger.info("<<< Pipeline finalizado con éxito.")
 
