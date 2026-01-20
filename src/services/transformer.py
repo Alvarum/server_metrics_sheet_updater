@@ -1,9 +1,17 @@
 import pandas as pd
-from typing import Dict, List
+from typing import Dict, List, Any, Optional
 from src.config import config
 
+
 class DataTransformer:
-    def __init__(self):
+    """
+    Clase encargada de transformar y normalizar los datos crudos de Firestore.
+    """
+
+    def __init__(self) -> None:
+        """
+        Inicializa el transformador con la zona horaria configurada.
+        """
         self.tz = config.timezone
 
     def process_data(
@@ -11,26 +19,23 @@ class DataTransformer:
         raw_docs: List[tuple]
     ) -> Dict[str, pd.DataFrame]:
         """
-        Coordina la transformación de Servidores y Cámaras.
+        Coordina la transformación de datos de Servidores y Cámaras.
 
         :param raw_docs: Lista de tuplas (id, data_dict) desde Firestore.
-        :return: Diccionario con DataFrames para 'servers' y 'cameras'.
+        :return: Diccionario con DataFrames procesados.
         """
-        servers_rows = []
-        cameras_rows = []
+        servers_rows: List[Dict[str, Any]] = []
+        cameras_rows: List[Dict[str, Any]] = []
 
         for doc_id, data in raw_docs:
-            # 1. Procesar Servidor
-            # _flatten_server capturará 'timestamp_query' automáticamente
-            # y _fix_timestamps lo convertirá a 'timestamp_query_dt'
+            # 1. Procesa datos del Servidor
             server_row = self._flatten_server(doc_id, data)
             servers_rows.append(server_row)
 
-            # Capturamos el timestamp del servidor para pasarlo a las cámaras
-            # Si no existe, usamos None
+            # Extrae timestamp del servidor para propagar a cámaras
             server_query_time = server_row.get("timestamp_query_dt")
 
-            # 2. Procesar Cámaras
+            # 2. Procesa datos de Cámaras asociadas
             if "cameras_status" in data and isinstance(data["cameras_status"], dict):
                 for cam_name, cam_data in data["cameras_status"].items():
                     if isinstance(cam_data, dict):
@@ -39,17 +44,17 @@ class DataTransformer:
                             cam_name,
                             cam_data
                         )
-                        # HERENCIA: Asignamos el timestamp del servidor a la cámara
+                        # Propaga timestamp del servidor a la cámara
                         if server_query_time is not None:
                             cam_row["timestamp_query_dt"] = server_query_time
                         
                         cameras_rows.append(cam_row)
 
-        # Crea los DataFrames
+        # Genera DataFrames
         df_servers = pd.DataFrame(servers_rows)
         df_cameras = pd.DataFrame(cameras_rows)
 
-        # Aplica Renombrado y ORDENAMIENTO según el YAML
+        # Aplica filtrado de columnas y ordenamiento según configuración
         df_servers = self._rename_and_filter(
             df_servers,
             config.servers_config["columns"]
@@ -64,40 +69,41 @@ class DataTransformer:
     def _flatten_server(
         self,
         doc_id: str,
-        data: dict
-    ) -> dict:
+        data: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """
-        Aplana la estructura anidada de Firestore.
+        Aplana la estructura anidada de un servidor.
 
-        :param doc_id: ID del documento (nombre del servidor).
-        :param data: Diccionario de datos del servidor.
+        :param doc_id: ID del documento (Nombre del servidor).
+        :param data: Diccionario de datos crudos.
         :return: Diccionario aplanado.
         """
         row = {"Server Name": doc_id}
         for k, v in data.items():
-            if k == "cameras_status": continue
-            # Aplana server_stats
+            if k == "cameras_status":
+                continue
+            
+            # Aplana sub-diccionario server_stats
             if k == "server_stats" and isinstance(v, dict):
                 for sk, sv in v.items():
                     row[f"server_stats_{sk}"] = sv
             else:
                 row[k] = v
         
-        # Aquí se procesa 'timestamp_query' --> 'timestamp_query_dt'
         return self._fix_timestamps(row)
 
     def _flatten_camera(
         self,
         server_id: str,
         cam_name: str,
-        data: dict
-    ) -> dict:
+        data: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """
         Aplana la estructura anidada de una cámara.
 
-        :param server_id: ID del servidor al que pertenece la cámara.
+        :param server_id: ID del servidor padre.
         :param cam_name: Nombre de la cámara.
-        :param data: Diccionario de datos de la cámara.
+        :param data: Datos crudos de la cámara.
         :return: Diccionario aplanado.
         """
         row = {
@@ -109,58 +115,63 @@ class DataTransformer:
 
     def _fix_timestamps(
         self,
-        row: dict
-    ) -> dict:
+        row: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """
-        Busca campos timestamp, los convierte a datetime y ajusta la
-        zona horaria. Detecta strings y números.
+        Normaliza campos de fecha/hora.
 
-        :param row: Diccionario de datos.
-        :return: Diccionario con datos normalizados.
+        Busca claves con 'timestamp' o 'utc', convierte a datetime,
+        ajusta zona horaria y elimina info de zona para compatibilidad.
+
+        :param row: Fila de datos.
+        :return: Fila con fechas normalizadas.
         """
         new_row = row.copy()
         for k, v in row.items():
-            # Detectamos cualquier key que tenga "timestamp" o "utc"
-            if "timestamp" in k.lower() or "utc" in k.lower():
+            k_lower = k.lower()
+            if "timestamp" in k_lower or "utc" in k_lower:
                 try:
-                    # Convierte a datetime. 'coerce' maneja errores suavemente.
                     dt = pd.to_datetime(
                         v,
                         unit='s' if isinstance(v, (int, float)) else None,
                         utc=True,
-                        errors='coerce' 
+                        errors='coerce'
                     )
-
+                    
                     if pd.notna(dt):
-                        # Guardar con sufijo _dt para diferenciar del raw
+                        # Genera sufijo _dt si no existe
                         new_key = f"{k}_dt" if "_dt" not in k else k
-
-                        # Convertir a zona horaria local y quitar info de zona (naive)
-                        # para que Excel/Sheets no se confundan
-                        new_row[new_key] = dt.tz_convert(self.tz).tz_localize(None)
-                except:
+                        
+                        # Convierte TZ y remueve info (naive datetime)
+                        converted_dt = dt.tz_convert(self.tz).tz_localize(None)
+                        new_row[new_key] = converted_dt
+                except Exception:
+                    # Si falla la conversión, mantiene el valor original
                     pass
         return new_row
 
     def _rename_and_filter(
         self,
         df: pd.DataFrame,
-        columns_config: dict
+        columns_config: Dict[str, Any]
     ) -> pd.DataFrame:
         """
-        Renombra columnas usando el YAML y descarta las que no estén
-        configuradas.
+        Renombra columnas y filtra según configuración.
 
         :param df: DataFrame original.
-        :param columns_config: Configuración de columnas desde el YAML.
-        :return: DataFrame renombrado y filtrado.
+        :param columns_config: Configuración de columnas (YAML).
+        :return: DataFrame transformado.
         """
-        if df.empty: return df
-
+        if df.empty:
+            return df
+        
         rename_map = {k: v["name"] for k, v in columns_config.items()}
         df = df.rename(columns=rename_map)
-
-        # Filtra y ordena según el YAML
-        final_cols = [v["name"] for k, v in columns_config.items() if v["name"] in df.columns]
-
+        
+        # Filtra columnas permitidas y asegura orden
+        final_cols = [
+            v["name"] for k, v in columns_config.items()
+            if v["name"] in df.columns
+        ]
+        
         return df[final_cols]

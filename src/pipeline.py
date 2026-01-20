@@ -12,72 +12,67 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-def run_pipeline():
+
+def run_pipeline() -> None:
     """
-    Ejecuta el pipeline ETL completo: Extracción desde Firestore,
-    Transformación de datos, y Carga a Google Sheets.
+    Ejecuta el pipeline ETL completo.
+
+    1. Extracción: Obtiene datos de Firestore.
+    2. Transformación: Normaliza fechas y estructura datos.
+    3. Carga: Escribe en Snapshot e Historial de Google Sheets.
     """
     logger.info(">>> Iniciando Pipeline ETL")
 
     try:
-        # TimeStamps
-        # Usa zona horaria definida en config
+        # Configuración de Tiempos
         tz_chile = pytz.timezone(config.timezone)
         now_utc = datetime.now(pytz.utc)
         now_chile = now_utc.astimezone(tz_chile)
 
-        # Formatos string pal header
         str_chile = now_chile.strftime("%Y-%m-%d %H:%M:%S")
         str_utc = now_utc.strftime("%Y-%m-%d %H:%M:%S UTC")
 
-        # Extracción de los datazos
+        # --- Extracción ---
         logger.info("Conectando a Firestore...")
         firestore = FirestoreService()
         raw_docs = list(firestore.get_documents())
 
         if not raw_docs:
-            logger.warning("No hay datos. Finalizando.")
+            logger.warning("No hay datos disponibles. Finalizando.")
             return
 
-        # Transformación de los datitos
+        # --- Transformación ---
         logger.info("Transformando datos...")
         transformer = DataTransformer()
+        # Se procesa la data sin argumentos extra (toma timestamp interno)
         datasets = transformer.process_data(raw_docs)
 
-        # Carga a google shit
+        # --- Carga ---
         logger.info("Conectando a Google Sheets...")
         sheets = SheetsService()
 
-        # region SERVIDORES
+        # Procesa Servidores
         logger.info("Procesando Servidores...")
-
-        # Actualiza hoja principal
         sheets.update_snapshot(
             config.servers_config,
             datasets["servers"],
             str_chile,
             str_utc
         )
-
-        # Guarda en Historial
         sheets.append_history(
             config.servers_config,
             datasets["servers"],
             str_chile
         )
 
-        # region CÁMARAS
+        # Procesa Cámaras
         logger.info("Procesando Cámaras...")
-
-        # Actualizaa hoja principal
         sheets.update_snapshot(
             config.cameras_config,
             datasets["cameras"],
             str_chile,
             str_utc
         )
-
-        # Guarda en Historial
         sheets.append_history(
             config.cameras_config,
             datasets["cameras"],
@@ -85,6 +80,7 @@ def run_pipeline():
         )
 
         logger.info("<<< Pipeline finalizado con éxito.")
+
     except Exception as e:
         logger.error(
             f"Error fatal en el pipeline: {e}",
