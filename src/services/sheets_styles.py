@@ -21,6 +21,9 @@ FORMATS: Dict[str, Dict[str, Any]] = {
     "DURATION": {"numberFormat": {"type": "TIME", "pattern": "[h]:mm:ss"}},
 }
 
+BORDER_BLACK: Dict[str, Any] = {"style": "SOLID", "color": BLACK}
+
+
 STYLES: Dict[str, Dict[str, Any]] = {
     "HEADER_DASHBOARD": {
         "backgroundColor": RAPTOR_BLUE,
@@ -33,6 +36,13 @@ STYLES: Dict[str, Dict[str, Any]] = {
         "textFormat": {"foregroundColor": WHITE, "bold": True, "fontSize": 11},
         "horizontalAlignment": "CENTER",
         "verticalAlignment": "MIDDLE",
+        "borders": {
+        "bottom": BORDER_BLACK,
+        "top": BORDER_BLACK,
+        "left": BORDER_BLACK,
+        "right": BORDER_BLACK,
+        },
+        "wrapStrategy": "WRAP",
     },
     "DASHBOARD_BG": {"backgroundColor": WHITE},
     "LABEL_BOLD": {
@@ -45,6 +55,13 @@ STYLES: Dict[str, Dict[str, Any]] = {
         "textFormat": {"foregroundColor": WHITE, "bold": True, "fontSize": 10},
         "horizontalAlignment": "CENTER",
         "verticalAlignment": "MIDDLE",
+        "borders": {
+        "bottom": BORDER_BLACK,
+        "top": BORDER_BLACK,
+        "left": BORDER_BLACK,
+        "right": BORDER_BLACK,
+        },
+        "wrapStrategy": "WRAP",
     },
     "METADATA_LABEL": {
         "backgroundColor": RAPTOR_BLUE,
@@ -56,10 +73,10 @@ STYLES: Dict[str, Dict[str, Any]] = {
         "horizontalAlignment": "RIGHT",
         "verticalAlignment": "MIDDLE",
         "borders": {
-            "bottom": {"style": "SOLID", "color": WHITE},
-            "top": {"style": "SOLID", "color": WHITE},
-            "left": {"style": "SOLID", "color": WHITE},
-            "right": {"style": "SOLID", "color": WHITE},
+            "bottom": BORDER_BLACK,
+            "top": BORDER_BLACK,
+            "left": BORDER_BLACK,
+            "right": BORDER_BLACK,
         },
     },
     "METADATA_VALUE": {
@@ -92,6 +109,8 @@ STYLES: Dict[str, Dict[str, Any]] = {
         },
     },
 }
+
+
 
 # Mapeo de condiciones para formato condicional, quizás era
 # demaciado crear un archivo solo para esto así que lo deje aquí

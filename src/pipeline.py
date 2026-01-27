@@ -34,7 +34,7 @@ def run_pipeline() -> None:
     now_utc = datetime.now(pytz.utc)
     now_chile = now_utc.astimezone(tz_chile)
     str_chile = now_chile.strftime("%Y-%m-%d %H:%M:%S")
-    str_utc = now_utc.strftime("%Y-%m-%d %H:%M:%S UTC")
+    #str_utc = now_utc.strftime("%Y-%m-%d %H:%M:%S UTC")
 
     try:
         # conexion con Firestore
@@ -86,8 +86,8 @@ def run_pipeline() -> None:
             df=datasets["cameras"],
         )
 
-        log.info("Actualizando Dashboard ...")
-        sheets.setup_dashboard()
+        # log.info("Actualizando Dashboard ...")
+        # sheets.setup_dashboard()
 
         log.info("<<< Finalizado con éxito.")
     except Exception as exc:

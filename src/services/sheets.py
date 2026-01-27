@@ -1013,7 +1013,10 @@ class SheetsService:
             )
         )
 
-    def _batch_update_requests(self, requests: Sequence[Dict[str, Any]]) -> None:
+    def _batch_update_requests(
+        self,
+        requests: Sequence[Dict[str, Any]]
+    ) -> None:
         """
         Envía un spreadsheets.batchUpdate con requests.
 
@@ -1069,5 +1072,5 @@ class SheetsService:
 
                 time.sleep(delay)
 
-        # Nunca debería llegar acá.
+        # Nunca debería llegar aquí.
         return None
